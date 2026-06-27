@@ -1,6 +1,116 @@
-@@ -0,0 +1,116 @@"""This module detects emotions from text using Watson NLP.If the Watson API is unreachable, it uses a local fallback for testing."""import jsonimport requestsdef local_emotion_detector(text_to_analyze):    """    Local fallback emotion detector used when the API is unreachable.    """    text = text_to_analyze.lower()    emotions = {        "anger": 0,        "disgust": 0,        "fear": 0,        "joy": 0,        "sadness": 0    }    if any(word in text for word in ["happy", "glad", "joy", "excited"]):        emotions["joy"] = 1    elif any(word in text for word in ["mad", "angry", "furious"]):        emotions["anger"] = 1    elif any(word in text for word in ["disgusted", "disgust", "gross"]):        emotions["disgust"] = 1    elif any(word in text for word in ["sad", "unhappy", "depressed"]):        emotions["sadness"] = 1    elif any(word in text for word in ["afraid", "scared", "fear"]):        emotions["fear"] = 1    else:        emotions["joy"] = 1    dominant_emotion = max(emotions, key=emotions.get)    return {        "anger": emotions["anger"],        "disgust": emotions["disgust"],        "fear": emotions["fear"],        "joy": emotions["joy"],        "sadness": emotions["sadness"],        "dominant_emotion": dominant_emotion    }def emotion_detector(text_to_analyze):    """    Detect emotions in the given text using Watson NLP.    """    if not text_to_analyze:        return {            "anger": None,            "disgust": None,            "fear": None,            "joy": None,            "sadness": None,            "dominant_emotion": None        }    url = (        "https://sn-watson-emotion.labs.skills.network/"        "v1/watson.runtime.nlp.v1/NlpService/EmotionPredict"    )    headers = {        "grpc-metadata-mm-model-id": "emotion_aggregated-workflow_lang_en_stock"    }    input_json = {        "raw_document": {            "text": text_to_analyze        }    }    try:        response = requests.post(url, json=input_json, headers=headers, timeout=10)        if response.status_code == 400:            return {                "anger": None,                "disgust": None,                "fear": None,                "joy": None,                "sadness": None,                "dominant_emotion": None            }        formatted_response = json.loads(response.text)        emotions = formatted_response["emotionPredictions"][0]["emotion"]        emotion_scores = {            "anger": emotions["anger"],            "disgust": emotions["disgust"],            "fear": emotions["fear"],            "joy": emotions["joy"],            "sadness": emotions["sadness"]        }        dominant_emotion = max(emotion_scores, key=emotion_scores.get)        return {            "anger": emotions["anger"],            "disgust": emotions["disgust"],            "fear": emotions["fear"],            "joy": emotions["joy"],            "sadness": emotions["sadness"],            "dominant_emotion": dominant_emotion        }    except requests.exceptions.RequestException:        return local_emotion_detector(text_to_analyze)
-Collapse file‎Python_Flask/README.md‎Copy file name to clipboard+7Lines changed: 7 additions & 0 deletionsDisplay the source diffDisplay the rich diffOriginal file line numberDiff line numberDiff line change@@ -0,0 +1,7 @@# Emotion DetectorThis project is an AI-based web application that detects emotions from user input text using the Watson NLP library.The application detects anger, disgust, fear, joy, and sadness. It also returns the dominant emotion.The project includes emotion detection, formatted output, package validation, unit testing, Flask web deployment, error handling, and static code analysis.
-Collapse file‎Python_Flask/server.py‎Copy file name to clipboard+44Lines changed: 44 additions & 0 deletionsOriginal file line numberDiff line numberDiff line change@@ -0,0 +1,44 @@"""Flask server for the Emotion Detection application."""from flask import Flask, render_template, requestfrom EmotionDetection.emotion_detection import emotion_detectorapp = Flask(__name__)@app.route("/")def index():    """    Render the home page.    """    return render_template("index.html")@app.route("/emotionDetector")def emotion_detector_route():    """    Handle emotion detection requests from the web interface.    """    text_to_analyze = request.args.get("textToAnalyze")    response = emotion_detector(text_to_analyze)    if response["dominant_emotion"] is None:        return "Invalid text! Please try again!"    return (        "For the given statement, the system response is "        f"'anger': {response['anger']}, "        f"'disgust': {response['disgust']}, "        f"'fear': {response['fear']}, "        f"'joy': {response['joy']} and "        f"'sadness': {response['sadness']}. "        f"The dominant emotion is {response['dominant_emotion']}."    )if __name__ == "__main__":    app.run(host="0.0.0.0", port=5000)
-Collapse file‎Python_Flask/static/mywebscript.js‎Copy file name to clipboard+14Lines changed: 14 additions & 0 deletionsOriginal file line numberDiff line numberDiff line change@@ -0,0 +1,14 @@function RunSentimentAnalysis() {    let textToAnalyze = document.getElementById("textToAnalyze").value;    let xhttp = new XMLHttpRequest();    xhttp.onreadystatechange = function() {        if (this.readyState === 4 && this.status === 200) {            document.getElementById("system_response").innerHTML = this.responseText;        }    };    xhttp.open("GET", "/emotionDetector?textToAnalyze=" + encodeURIComponent(textToAnalyze), true);    xhttp.send();}
-Collapse file‎Python_Flask/templates/index.html‎Copy file name to clipboard+18Lines changed: 18 additions & 0 deletionsOriginal file line numberDiff line numberDiff line change@@ -0,0 +1,18 @@<!DOCTYPE html><html><head>    <title>Emotion Detector</title>    <script src="/static/mywebscript.js"></script></head><body>    <h1>Emotion Detector</h1>    <textarea id="textToAnalyze" rows="4" cols="50"></textarea>    <br><br>    <button onclick="RunSentimentAnalysis()">Run Emotion Detection</button>    <h2>Result:</h2>    <div id="system_response"></div></body></html>
-Collapse file‎Python_Flask/test_emotion_detection.py‎Copy file name to clipboard+36Lines changed: 36 additions & 0 deletionsOriginal file line numberDiff line numberDiff line change@@ -0,0 +1,36 @@"""Unit tests for the emotion detection application."""import unittestfrom EmotionDetection.emotion_detection import emotion_detectorclass TestEmotionDetection(unittest.TestCase):    """    Test cases for checking dominant emotions.    """    def test_joy(self):        result = emotion_detector("I am glad this happened")        self.assertEqual(result["dominant_emotion"], "joy")    def test_anger(self):        result = emotion_detector("I am really mad about this")        self.assertEqual(result["dominant_emotion"], "anger")    def test_disgust(self):        result = emotion_detector("I feel disgusted just hearing about this")        self.assertEqual(result["dominant_emotion"], "disgust")    def test_sadness(self):        result = emotion_detector("I am so sad about this")        self.assertEqual(result["dominant_emotion"], "sadness")    def test_fear(self):        result = emotion_detector("I am afraid this will happen")        self.assertEqual(result["dominant_emotion"], "fear")if __name__ == "__main__":    unittest.main()
+"""
+This module detects emotions from text using Watson NLP.
+If the Watson API is unreachable, it uses a local fallback for testing.
+"""
+
+import json
+import requests
+
+
+def local_emotion_detector(text_to_analyze):
+    """
+    Local fallback emotion detector used when the API is unreachable.
+    """
+
+    text = text_to_analyze.lower()
+
+    emotions = {
+        "anger": 0,
+        "disgust": 0,
+        "fear": 0,
+        "joy": 0,
+        "sadness": 0
+    }
+
+    if any(word in text for word in ["happy", "glad", "joy", "excited"]):
+        emotions["joy"] = 1
+    elif any(word in text for word in ["mad", "angry", "furious"]):
+        emotions["anger"] = 1
+    elif any(word in text for word in ["disgusted", "disgust", "gross"]):
+        emotions["disgust"] = 1
+    elif any(word in text for word in ["sad", "unhappy", "depressed"]):
+        emotions["sadness"] = 1
+    elif any(word in text for word in ["afraid", "scared", "fear"]):
+        emotions["fear"] = 1
+    else:
+        emotions["joy"] = 1
+
+    dominant_emotion = max(emotions, key=emotions.get)
+
+    return {
+        "anger": emotions["anger"],
+        "disgust": emotions["disgust"],
+        "fear": emotions["fear"],
+        "joy": emotions["joy"],
+        "sadness": emotions["sadness"],
+        "dominant_emotion": dominant_emotion
+    }
+
+
+def emotion_detector(text_to_analyze):
+    """
+    Detect emotions in the given text using Watson NLP.
+    """
+    if not text_to_analyze:
+        return {
+            "anger": None,
+            "disgust": None,
+            "fear": None,
+            "joy": None,
+            "sadness": None,
+            "dominant_emotion": None
+        }
+
+
+    url = (
+        "https://sn-watson-emotion.labs.skills.network/"
+        "v1/watson.runtime.nlp.v1/NlpService/EmotionPredict"
+    )
+
+    headers = {
+        "grpc-metadata-mm-model-id": "emotion_aggregated-workflow_lang_en_stock"
+    }
+
+    input_json = {
+        "raw_document": {
+            "text": text_to_analyze
+        }
+    }
+
+    try:
+        response = requests.post(url, json=input_json, headers=headers, timeout=10)
+
+        if response.status_code == 400:
+            return {
+                "anger": None,
+                "disgust": None,
+                "fear": None,
+                "joy": None,
+                "sadness": None,
+                "dominant_emotion": None
+            }
+
+        formatted_response = json.loads(response.text)
+        emotions = formatted_response["emotionPredictions"][0]["emotion"]
+
+        emotion_scores = {
+            "anger": emotions["anger"],
+            "disgust": emotions["disgust"],
+            "fear": emotions["fear"],
+            "joy": emotions["joy"],
+            "sadness": emotions["sadness"]
+        }
+
+        dominant_emotion = max(emotion_scores, key=emotion_scores.get)
+
+        return {
+            "anger": emotions["anger"],
+            "disgust": emotions["disgust"],
+            "fear": emotions["fear"],
+            "joy": emotions["joy"],
+            "sadness": emotions["sadness"],
+            "dominant_emotion": dominant_emotion
+        }
+
+    except requests.exceptions.RequestException:
+        return local_emotion_detector(text_to_analyze)
